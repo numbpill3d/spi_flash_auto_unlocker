@@ -8,15 +8,15 @@ modification utility designed to remove BIOS/UEFI passwords from laptop and
 embedded systems.  The tool is intentionally verbose and maximalist in its
 design: rather than presenting a tiny script that only performs a single
 operation, it provides an interactive text based interface reminiscent of
-early‑1990s Macintosh or Web 1.0 utilities, extensive logging, robust
+early-1990s Macintosh or Web 1.0 utilities, extensive logging, robust
 structure parsing, and comprehensive error checking.  The code is heavily
 commented and designed for clarity and educational value.
 
-The high level operation of the Auto‑Unlocker is as follows:
+The high level operation of the Auto-Unlocker is as follows:
 
 1.  Connect to a hardware programmer (CH341A or FT2232H) via ``flashrom``.
 2.  Dump the entire SPI flash into a backup file.
-3.  Parse the UEFI firmware image in memory, locate the non‑volatile
+3.  Parse the UEFI firmware image in memory, locate the non-volatile
     variable store and enumerate all UEFI variables.
 4.  Detect variables that are known to store BIOS passwords or disable
     protections (e.g. ``AMITSESetup`` for AMI, ``Setup`` or vendor specific
@@ -24,12 +24,12 @@ The high level operation of the Auto‑Unlocker is as follows:
     password by zeroing its data field or mark the variable as deleted.
     Research has shown that the AMITSESetup variable often contains the
     user and administrator passwords at fixed offsets within the data
-    structure【364642084595459†L96-L122】.  Clearing the variable or zeroing out
-    those bytes will effectively remove the password【762556427276857†L1226-L1240】.
+    structure.  Clearing the variable or zeroing out
+    those bytes will effectively remove the password.
     Some manufacturers (such as Lenovo) use special variables like ``cE!``
     within a vendor specific GUID to enable or disable SPI flash protections.
     Setting this variable to a null byte will disable the protections and
-    allow rewriting of the firmware【81053258045947†L420-L454】.
+    allow rewriting of the firmware.
 5.  Save the patched firmware image to disk and optionally flash it back to
     the SPI chip.
 
@@ -37,8 +37,8 @@ Important notes:
 
 * **Physical Access Required.**  Clearing a BIOS or UEFI password by
   modifying firmware requires physically opening the target system to clip
-  onto the SPI ROM chip using a SOIC‑8 test clip.  Performing this on a
-  live system is risky – you should only attempt it on hardware you own
+  onto the SPI ROM chip using a SOIC-8 test clip.  Performing this on a
+  live system is risky - you should only attempt it on hardware you own
   and understand.
 * **Risk of Bricking.**  Flashing modified firmware can leave the system
   unbootable if checksums or other integrity mechanisms are not updated
@@ -48,14 +48,14 @@ Important notes:
   firmware may violate warranties or legal agreements.  Only use this tool
   on devices you own and have the right to modify.
 
-The implementation makes extensive use of Python's built‑in features and
+The implementation makes extensive use of Python's built-in features and
 standard library modules.  To communicate with the programmer hardware it
 invokes the external utility ``flashrom``, which must be installed on the
 host system and accessible via the system PATH.  A future revision could
 integrate native SPI support using ``pyftdi`` or similar libraries.
 
 Author:  OpenAI ChatGPT (agent mode)
-Date:    2025‑08‑14
+Date:    2025-08-14
 
 """
 
@@ -79,19 +79,19 @@ from typing import Dict, Iterable, List, Optional, Tuple
 # identifies the vendor namespace for the variable.  The following GUIDs are
 # known to be associated with password storage or backdoor toggles.
 
-# AMITSESetup variable GUID (AMI Aptio firmware) – this GUID appears in many
+# AMITSESetup variable GUID (AMI Aptio firmware) - this GUID appears in many
 # AMI based firmwares and contains the BIOS passwords in its data structure.
 AMITSESETUP_GUID = bytes.fromhex(
     "38FA11C8C8427945A9BB60E94EDDFB34"  # Note: displayed as big endian; search below uses little endian
 )
 
-# Lenovo backdoor namespace – the 'cE!' variable within this GUID disables
-# SPI write protection when set【81053258045947†L420-L454】.
+# Lenovo backdoor namespace - the 'cE!' variable within this GUID disables
+# SPI write protection when set.
 LENOVO_BACKDOOR_NAMESPACE_GUID = bytes.fromhex(
     "6ACCE65DDA354B39B64B5ED927A7DC7E"  # big endian representation
 )
 
-# UEFI variable state flags as described by Count Chu【382574726413457†L40-L93】.
+# UEFI variable state flags as described by Count Chu.
 VAR_IN_DELETED_TRANSITION = 0xFE
 VAR_DELETED = 0xFC
 VAR_HEADER_VALID_ONLY = 0x7F
@@ -100,18 +100,18 @@ VAR_ADDED = 0x3F
 
 def guid_to_little_endian(guid: bytes) -> bytes:
     """
-    Convert a 16‑byte GUID from the canonical big‑endian format used in
-    specification documents to the little‑endian representation used in
+    Convert a 16-byte GUID from the canonical big-endian format used in
+    specification documents to the little-endian representation used in
     firmware images.  UEFI GUIDs are stored with the first three fields
     reversed at the byte level but not the final two fields.  The input
     should be a 16 byte sequence with the exact bytes of the GUID in the
     order typically seen in text (e.g. as produced by `bytes.fromhex`).
 
     Args:
-        guid: 16‑byte sequence containing the big‑endian GUID.
+        guid: 16-byte sequence containing the big-endian GUID.
 
     Returns:
-        A new 16‑byte sequence representing the little‑endian storage order.
+        A new 16-byte sequence representing the little-endian storage order.
     """
     if len(guid) != 16:
         raise ValueError("GUID must be exactly 16 bytes long")
@@ -126,13 +126,13 @@ def guid_to_little_endian(guid: bytes) -> bytes:
 
 def format_guid(guid_le: bytes) -> str:
     """
-    Convert a 16‑byte GUID from little‑endian format (as stored in firmware)
+    Convert a 16-byte GUID from little-endian format (as stored in firmware)
     into the human readable canonical textual format.
 
     Args:
-        guid_le: 16‑byte GUID in little endian storage order.
+        guid_le: 16-byte GUID in little endian storage order.
     Returns:
-        Canonical GUID string (36 characters) in the form XXXXXXXX‑XXXX‑XXXX‑XXXX‑XXXXXXXXXXXX.
+        Canonical GUID string (36 characters) in the form XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX.
     """
     if len(guid_le) != 16:
         raise ValueError("GUID must be exactly 16 bytes long")
@@ -164,7 +164,7 @@ class UEFIVariable:
         return (self.state & VAR_DELETED) != 0
 
     def mark_deleted(self) -> None:
-        """Mark this variable as deleted by updating the state field (0x3f → 0x3d)."""
+        """Mark this variable as deleted by updating the state field (0x3f -> 0x3d)."""
         # Only change bits from 1 to 0.  This method mutates the state in place.
         self.state &= VAR_DELETED
 
@@ -205,7 +205,7 @@ def parse_uefi_variables(data: bytes) -> List[UEFIVariable]:
         guid_to_little_endian(LENOVO_BACKDOOR_NAMESPACE_GUID): "LenovoBackdoor",
     }
 
-    # Build a mapping from little‑endian GUID bytes to human names for easier
+    # Build a mapping from little-endian GUID bytes to human names for easier
     # debugging.  For unknown GUIDs this mapping will return None.
     guid_name_map: Dict[bytes, str] = target_guids_le.copy()
 
@@ -253,7 +253,7 @@ def parse_uefi_variables(data: bytes) -> List[UEFIVariable]:
             if data_offset + data_size > len(data):
                 idx += 1
                 continue
-            # Extract the name (UTF‑16LE string).  Strip trailing null terminator.
+            # Extract the name (UTF-16LE string).  Strip trailing null terminator.
             raw_name = data[name_offset : name_offset + name_size]
             try:
                 name_str = raw_name.decode("utf-16le", errors="ignore").rstrip("\x00")
@@ -299,11 +299,11 @@ def patch_passwords(data: bytearray, variables: Iterable[UEFIVariable],
         variables: An iterable of UEFIVariable objects to inspect.
         zero_data: If True, overwrite the variable's data area with null bytes.
         mark_deleted: If True, set the state field's delete bit to remove the
-                      variable【382574726413457†L40-L93】.
+                      variable.
         verbose: If True, returns descriptive log lines for each modification.
 
     Returns:
-        A list of human‑readable strings describing the modifications applied.
+        A list of human-readable strings describing the modifications applied.
     """
     modifications: List[str] = []
     for var in variables:
@@ -380,13 +380,13 @@ def run_flashrom(command: List[str]) -> Tuple[int, str, str]:
 
 def display_banner() -> None:
     """
-    Print a retro banner reminiscent of early Macintosh or Web 1.0 text UIs.
+    Print a retro banner reminiscent of early Macintosh or Web 1.0 text UIs.
     This function intentionally uses ASCII art and decorative borders to
     reinforce the retro aesthetic requested by the user.
     """
     banner = r"""
 ===========================================================================
-               SPI FLASH AUTO‑UNLOCKER – VINTAGE TERMINAL MODE
+               SPI FLASH AUTO-UNLOCKER - VINTAGE TERMINAL MODE
 ===========================================================================
 
  This utility will interface with a supported SPI programmer to dump and
@@ -410,14 +410,14 @@ def human_readable_size(num_bytes: int) -> str:
 
 def main(argv: Optional[List[str]] = None) -> int:
     """
-    Entry point for the SPI Flash Auto‑Unlocker.  Parses command line
+    Entry point for the SPI Flash Auto-Unlocker.  Parses command line
     arguments, performs dump/patch/flash operations and prints status.
 
     Args:
         argv: Optional list of arguments.  If None, uses sys.argv[1:].
 
     Returns:
-        An integer exit code (0 on success, non‑zero on error).
+        An integer exit code (0 on success, non-zero on error).
     """
     display_banner()
     parser = argparse.ArgumentParser(
@@ -434,7 +434,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         "--chip",
         dest="chip",
         default=None,
-        help="Optional flash chip name (e.g. W25Q128FV).  If omitted, flashrom attempts auto‑detect.",
+        help="Optional flash chip name (e.g. W25Q128FV).  If omitted, flashrom attempts auto-detect.",
     )
     parser.add_argument(
         "--dump",
@@ -449,7 +449,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         help="Path to save the patched firmware image (default: flash_patched.bin)",
     )
     parser.add_argument(
-        "--no‑flash",
+        "--no-flash",
         dest="no_flash",
         action="store_true",
         help="Do not flash the modified firmware back to the chip (safe dry run)",
@@ -461,7 +461,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         help="Mark password variables as deleted instead of (or in addition to) zeroing data",
     )
     parser.add_argument(
-        "--skip‑zero",
+        "--skip-zero",
         dest="skip_zero",
         action="store_true",
         help="Do not overwrite variable data with zeros (useful when only marking deletion)",
@@ -525,9 +525,9 @@ def main(argv: Optional[List[str]] = None) -> int:
     with open(args.patched_file, "wb") as f:
         f.write(firmware)
     print(f"[+] Patched firmware written to '{args.patched_file}'.")
-    # Step 5: Flash modified firmware back to chip (unless --no‑flash)
+    # Step 5: Flash modified firmware back to chip (unless --no-flash)
     if args.no_flash:
-        print("[+] Skipping flash write as requested (--no‑flash).  You must manually flash later.")
+        print("[+] Skipping flash write as requested (--no-flash).  You must manually flash later.")
         return 0
     print("[+] Writing patched firmware back to SPI flash ...")
     flash_cmd = ["flashrom", "-p", args.reader, "-w", args.patched_file]
