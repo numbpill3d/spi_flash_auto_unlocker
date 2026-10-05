@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+*.bin
+flash_backup.bin
+flash_patched.bin
+backup.bin
+patched.bin

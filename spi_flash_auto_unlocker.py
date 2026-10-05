@@ -427,14 +427,20 @@ def main(argv: Optional[List[str]] = None) -> int:
         "--reader",
         dest="reader",
         choices=["ch341a_spi", "ft2232_spi"],
-        required=True,
-        help="Flashrom programmer driver name (e.g. ch341a_spi or ft2232_spi)",
+        default=None,
+        help="Flashrom programmer driver name (e.g. ch341a_spi or ft2232_spi). Required unless --image is given.",
     )
     parser.add_argument(
         "--chip",
         dest="chip",
         default=None,
         help="Optional flash chip name (e.g. W25Q128FV).  If omitted, flashrom attempts auto-detect.",
+    )
+    parser.add_argument(
+        "--image",
+        dest="image",
+        default=None,
+        help="Patch an existing firmware image file offline (no hardware/flashrom needed). Implies --no-flash.",
     )
     parser.add_argument(
         "--dump",
@@ -480,25 +486,42 @@ def main(argv: Optional[List[str]] = None) -> int:
     )
     args = parser.parse_args(argv)
 
-    # Step 1: Dump the firmware using flashrom
-    print(f"[+] Starting firmware dump using programmer '{args.reader}' ...")
-    dump_cmd = ["flashrom", "-p", args.reader, "-r", args.dump_file]
-    if args.chip:
-        dump_cmd.extend(["-c", args.chip])
-    rc, out, err = run_flashrom(dump_cmd)
-    print(out)
-    if rc != 0:
-        print("[-] Failed to read SPI flash.  aborting.")
-        print(err)
-        return rc
-    # Read the dumped binary
-    try:
-        with open(args.dump_file, "rb") as f:
-            firmware = bytearray(f.read())
-    except FileNotFoundError:
-        print(f"[-] Could not open dump file '{args.dump_file}'.  aborting.")
-        return 1
-    print(f"[+] Dumped firmware size: {human_readable_size(len(firmware))}")
+    # Step 1: Dump the firmware using flashrom (or load an offline image)
+    if args.image:
+        print(f"[+] Loading offline firmware image '{args.image}' (no hardware access) ...")
+        try:
+            with open(args.image, "rb") as f:
+                firmware = bytearray(f.read())
+        except FileNotFoundError:
+            print(f"[-] Could not open image file '{args.image}'.  aborting.")
+            return 1
+        # Keep --dump semantics: save a copy as the backup unless it IS the image
+        if args.dump_file != args.image:
+            with open(args.dump_file, "wb") as f:
+                f.write(firmware)
+            print(f"[+] Backup copy written to '{args.dump_file}'.")
+        args.no_flash = True
+    else:
+        if not args.reader:
+            parser.error("--reader is required unless --image is given.")
+        print(f"[+] Starting firmware dump using programmer '{args.reader}' ...")
+        dump_cmd = ["flashrom", "-p", args.reader, "-r", args.dump_file]
+        if args.chip:
+            dump_cmd.extend(["-c", args.chip])
+        rc, out, err = run_flashrom(dump_cmd)
+        print(out)
+        if rc != 0:
+            print("[-] Failed to read SPI flash.  aborting.")
+            print(err)
+            return rc
+        # Read the dumped binary
+        try:
+            with open(args.dump_file, "rb") as f:
+                firmware = bytearray(f.read())
+        except FileNotFoundError:
+            print(f"[-] Could not open dump file '{args.dump_file}'.  aborting.")
+            return 1
+    print(f"[+] Firmware size: {human_readable_size(len(firmware))}")
     # Step 2: Parse variables
     variables = parse_uefi_variables(bytes(firmware))
     print(f"[+] Discovered {len(variables)} potential UEFI variables in image.")
