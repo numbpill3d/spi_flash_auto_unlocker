@@ -13,7 +13,7 @@ Modern laptops often store administrator and user passwords inside the UEFI firm
 5. **Reflash**: Finally, the patched image is written back to the SPI chip with `flashrom`, restoring a system without the old password.
 
 ## 📋 Usage
-First install `flashrom`, Python 3, and any other dependencies. Then run the tool with appropriate options:
+First install `flashrom`, Python 3 (stdlib only, no pip packages required). Then run the tool with appropriate options:
 
 ```bash
 python3 spi_flash_auto_unlocker.py \
@@ -24,8 +24,16 @@ python3 spi_flash_auto_unlocker.py \
   --delete
 ```
 
+Safe dry run with no hardware attached (parse + patch a saved image only):
+
+```bash
+python3 spi_flash_auto_unlocker.py --image backup.bin --patch patched.bin --list
+python3 spi_flash_auto_unlocker.py --image backup.bin --patch patched.bin --delete
+```
+
 ### Options
-- `--reader`: Flashrom programmer driver name (required: `ch341a_spi` or `ft2232_spi`)
+- `--reader`: Flashrom programmer driver name (`ch341a_spi` or `ft2232_spi`). Required unless `--image` is given.
+- `--image`: Patch an existing firmware image file offline, no hardware/flashrom needed. Implies `--no-flash`.
 - `--chip`: Optional flash chip name (e.g., `W25Q128FV`)
 - `--dump`: Path to save the dumped firmware image (default: `flash_backup.bin`)
 - `--patch`: Path to save the patched firmware image (default: `flash_patched.bin`)
@@ -33,8 +41,14 @@ python3 spi_flash_auto_unlocker.py \
 - `--no-flash`: Do not automatically reflash (safe dry run)
 - `--list`: List all discovered variables and exit without making changes
 
+## 🔌 Hardware hookup (CH341A + SOIC-8 clip)
+1. Power the target board OFF, unplug battery/AC. Identify the SPI ROM (8-pin, often Winbond `W25Q*` / Macronix `MX25*` near the EC/BIOS area).
+2. Clip the SOIC-8 test clip onto the chip, pin 1 to pin 1 (dot marker). Connect to the CH341A programmer.
+3. On the host: `flashrom -p ch341a_spi` should detect the chip. If not, reseat the clip before retrying.
+4. Always dump twice and compare checksums before patching: keep the original dump offline.
+
 ## ⚠️ Safety Warning
-Flashing modified firmware can brick your device. Use this software at your own risk and only on hardware you own. Always keep the original dump in case something goes wrong.
+Flashing modified firmware can brick your device. Use this software at your own risk and only on hardware you own. Always keep the original dump in case something goes wrong. If `--list` finds no password variables, stop — do not flash a no-op image.
 
 ## 📄 License
 This project is released under the **MIT License**. See the `LICENSE` file for details.
